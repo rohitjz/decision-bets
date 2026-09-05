@@ -3,6 +3,8 @@
 A small decision tool inspired by Annie Duke's **_Thinking in Bets_** (via
 [this video summary](https://www.youtube.com/watch?v=nc4u9oxb0nA)).
 
+**▶ Live app: https://delightful-forest-053ffe50f.6.azurestaticapps.net**
+
 The core idea: **every decision is a bet on a future you can't see.** Good outcomes can come from
 bad decisions and vice versa, so if you only judge yourself by results, you learn the wrong lessons.
 This tool makes you write down the odds *before* you know how it turned out — then lets you come
