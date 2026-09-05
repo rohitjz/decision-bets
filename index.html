@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Decision Bets — A Thinking in Bets Decision Tool</title>
+<meta name="description" content="A practical decision-making tool inspired by Annie Duke's Thinking in Bets: expected value analysis, skill vs luck audit, known/unknown mapping, and belief calibration." />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎲</text></svg>" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <h1>🎲 Decision Bets</h1>
+    <p class="tagline">A practical decision-making toolkit inspired by Annie Duke's <em>Thinking in Bets</em></p>
+    <p class="credit">Based on the ideas from <a href="https://www.youtube.com/watch?v=nc4u9oxb0nA" target="_blank" rel="noopener">this video</a> — every decision is a bet against an uncertain future. Judge your process, not just your results.</p>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button class="tab-btn active" data-tab="eva">1. EVA Framework</button>
+  <button class="tab-btn" data-tab="known">2. Known / Unknown</button>
+  <button class="tab-btn" data-tab="belief">3. Belief Calibration</button>
+  <button class="tab-btn" data-tab="skillluck">4. Skill vs Luck Audit</button>
+  <button class="tab-btn" data-tab="journal">📓 Decision Journal</button>
+</nav>
+
+<main class="wrap">
+
+  <!-- 1. EVA FRAMEWORK -->
+  <section class="panel active" id="eva">
+    <h2>Expected Value Analysis (EVA)</h2>
+    <p class="hint">Map out the future before you bet on it. Emotions can have a seat at the table — EVA gets the first vote.</p>
+
+    <label>Decision title</label>
+    <input type="text" id="eva-title" placeholder="e.g. Should I take the job offer at Company B?" />
+
+    <div class="table-wrap">
+      <table id="eva-table">
+        <thead>
+          <tr>
+            <th>Scenario</th>
+            <th>Payoff (₹, $, or any unit — money, time, reputation, health…)</th>
+            <th>Probability (%)</th>
+            <th>Expected Value</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="eva-rows"></tbody>
+      </table>
+    </div>
+
+    <button class="btn secondary" id="eva-add-row">+ Add scenario</button>
+
+    <div class="eva-summary">
+      <div class="stat">
+        <span class="stat-label">Total probability</span>
+        <span class="stat-value" id="eva-total-prob">0%</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Total Expected Value</span>
+        <span class="stat-value" id="eva-total-ev">0</span>
+      </div>
+    </div>
+    <p class="warn" id="eva-prob-warning" hidden>⚠️ Probabilities should add up to 100% for an honest EV calculation.</p>
+
+    <div class="premortem">
+      <label>Pre-mortem: it's 12 months from now and it all failed. What happened?</label>
+      <textarea id="eva-premortem" rows="4" placeholder="Write the disaster story before it happens. Your brain builds exit ramps before the crash occurs."></textarea>
+    </div>
+
+    <button class="btn primary" id="eva-save">Save this decision to journal</button>
+  </section>
+
+  <!-- 2. KNOWN / UNKNOWN -->
+  <section class="panel" id="known">
+    <h2>Known / Unknown Table</h2>
+    <p class="hint">Chess has a visible board. Life is poker — the cards are hidden. Separate what you actually know from what you're assuming or hoping.</p>
+
+    <div class="two-col">
+      <div>
+        <h3>✅ Known facts</h3>
+        <p class="hint small">What is actually visible? What do I know for certain?</p>
+        <ul class="dyn-list" id="known-list"></ul>
+        <div class="add-row">
+          <input type="text" id="known-input" placeholder="Add a known fact..." />
+          <button class="btn secondary" id="known-add">Add</button>
+        </div>
+      </div>
+      <div>
+        <h3>❓ Hidden cards</h3>
+        <p class="hint small">What is unknown? What am I assuming? What am I hoping is true?</p>
+        <ul class="dyn-list" id="unknown-list"></ul>
+        <div class="add-row">
+          <input type="text" id="unknown-input" placeholder="Add an unknown / assumption..." />
+          <button class="btn secondary" id="unknown-add">Add</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. BELIEF CALIBRATION -->
+  <section class="panel" id="belief">
+    <h2>Belief Calibration — "You want to bet?"</h2>
+    <p class="hint">Replace binary right/wrong thinking with probabilities. For every belief driving your decision, ask how confident you really are — and whether you'd actually put money on it.</p>
+
+    <div class="add-row belief-add">
+      <input type="text" id="belief-input" placeholder="A belief you're relying on (e.g. 'This market will keep growing')" />
+      <input type="number" id="belief-confidence" min="0" max="100" value="70" />
+      <span>% confident</span>
+      <button class="btn secondary" id="belief-add">Add belief</button>
+    </div>
+
+    <div class="table-wrap">
+      <table id="belief-table">
+        <thead>
+          <tr><th>Belief</th><th>Confidence</th><th>Would you bet $1,000 on it?</th><th>Evidence it's based on</th><th></th></tr>
+        </thead>
+        <tbody id="belief-rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 4. SKILL VS LUCK AUDIT -->
+  <section class="panel" id="skillluck">
+    <h2>Skill vs Luck Audit</h2>
+    <p class="hint">Good results are bad teachers. Don't ask "was I skilled or lucky?" — you're most likely both, and self-serving bias has already rigged the answer. Picture someone else making the same move and rate it honestly.</p>
+
+    <label>Describe the decision or outcome you're auditing</label>
+    <input type="text" id="sl-title" placeholder="e.g. Chose Company B and the stock went up 500%" />
+
+    <label>Skill vs Luck dial</label>
+    <input type="range" id="sl-slider" min="0" max="100" value="50" />
+    <div class="dial-labels">
+      <span>100% Luck</span>
+      <span id="sl-readout">50 / 50</span>
+      <span>100% Skill</span>
+    </div>
+
+    <label>What part was skill? What can you repeat on purpose?</label>
+    <textarea id="sl-skill-notes" rows="2" placeholder="e.g. I suppressed my ego and didn't get seduced by the flashy title."></textarea>
+
+    <label>What part was luck / timing / circumstances outside your control?</label>
+    <textarea id="sl-luck-notes" rows="2" placeholder="e.g. The stock rally was driven by industry-wide tailwinds, not my doing."></textarea>
+
+    <label>What was the honest mistake (not luck, not skill — just an error)?</label>
+    <textarea id="sl-mistake-notes" rows="2" placeholder="e.g. I didn't sell when I should have — pure greed and attachment."></textarea>
+
+    <button class="btn primary" id="sl-save">Save this audit to journal</button>
+  </section>
+
+  <!-- JOURNAL -->
+  <section class="panel" id="journal">
+    <h2>📓 Decision Journal</h2>
+    <p class="hint">Every saved EVA decision and Skill/Luck audit lands here — stored locally in your browser. Revisit it later and check: did the process hold up, regardless of the result?</p>
+    <div id="journal-empty" class="hint">No entries yet. Save a decision from the EVA or Skill vs Luck tabs to see it here.</div>
+    <div id="journal-list"></div>
+    <button class="btn danger" id="journal-clear">Clear all journal entries</button>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <p>Inspired by Annie Duke's <em>Thinking in Bets</em>, via <a href="https://www.youtube.com/watch?v=nc4u9oxb0nA" target="_blank" rel="noopener">"If You Only Read One Book This Year, Make It This"</a>.
+    All data stays in your browser (localStorage) — nothing is sent anywhere.</p>
+  </div>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
