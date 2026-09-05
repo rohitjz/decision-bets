@@ -1,0 +1,12 @@
+{
+  "name": "decision-bets-api",
+  "version": "1.0.0",
+  "description": "Azure Functions API storing Decision Bets decisions in Azure Table Storage.",
+  "scripts": {
+    "start": "func start"
+  },
+  "dependencies": {
+    "@azure/functions": "^4.5.0",
+    "@azure/data-tables": "^13.3.0"
+  }
+}

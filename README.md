@@ -1,54 +1,68 @@
 # 🎲 Decision Bets
 
-A small, no-build, static web app that turns the ideas from Annie Duke's **_Thinking in Bets_**
-(as summarized in [this video](https://www.youtube.com/watch?v=nc4u9oxb0nA), *"If You Only Read
-One Book This Year, Make It This"*) into a practical decision-making toolkit.
+A small decision tool inspired by Annie Duke's **_Thinking in Bets_** (via
+[this video summary](https://www.youtube.com/watch?v=nc4u9oxb0nA)).
 
-**Live demo:** enabled via GitHub Pages once published — see the repository "About" section / Pages URL.
+The core idea: **every decision is a bet on a future you can't see.** Good outcomes can come from
+bad decisions and vice versa, so if you only judge yourself by results, you learn the wrong lessons.
+This tool makes you write down the odds *before* you know how it turned out — then lets you come
+back later and honestly separate skill from luck.
 
-## Why
+## How it works
 
-Good results are bad teachers. Outcomes are a mix of skill, luck, timing, and emotion, so judging a
-decision purely by how it turned out is a trap. This tool operationalizes four ideas from the book
-so you can audit your *process* instead of just your results:
+**1. Make the bet.** Name the decision, list the outcomes you can imagine, and give each one a value
+and a probability. The tool computes the expected value as you type. Then answer one question:
+*it's a year later and this failed — why?* Writing the failure story in advance is what surfaces the
+exit ramps early.
 
-1. **EVA Framework (Expected Value Analysis)** — map out 4-5 future scenarios, assign a payoff and a
-   probability to each, and calculate expected value. Includes a pre-mortem prompt: *"it's 12 months
-   from now and it all failed — what happened?"*
-2. **Known / Unknown table** — separate what you actually know from the hidden cards: your
-   assumptions and hopes. Life is poker, not chess — the board isn't fully visible.
-3. **Belief Calibration ("You want to bet?")** — replace binary right/wrong thinking with a
-   confidence percentage for every belief your decision depends on, and ask if you'd actually put
-   money on it.
-4. **Skill vs Luck Audit** — after the fact, rate a decision on a skill/luck dial instead of asking
-   "was I smart or lucky?" (a question your self-serving bias has already rigged), and separate
-   what was skill, what was luck, and what was just a plain mistake.
+**2. Record the outcome.** Once reality lands, reopen the decision and rate it on a skill↔luck dial —
+scoring it as if a stranger had made the move, which is the only way around your own self-serving
+bias. Add what you'd do differently.
 
-Every saved EVA analysis or Skill vs Luck audit is written to a **Decision Journal**, persisted in
-your browser's `localStorage` — nothing is sent to a server.
+That's the whole app: two steps, one page.
+
+## Storage
+
+Decisions are saved to **Azure Table Storage** through a small Azure Functions API, partitioned per
+user so everyone gets their own private list. No login is required — the browser generates a random
+user id on first visit and keeps it in `localStorage`.
+
+If the API isn't reachable (for example on the GitHub Pages mirror), the app transparently falls
+back to browser-only storage and the badge reads "saved on this device" instead of "☁ saved to Azure".
+
+```
+GET    /api/decisions?user=<id>       list a person's decisions
+POST   /api/decisions?user=<id>       save a new decision
+PATCH  /api/decisions/<id>?user=<id>  attach the outcome review
+DELETE /api/decisions/<id>?user=<id>  remove a decision
+```
 
 ## Running locally
 
-No build step, no dependencies. Just open `index.html` in a browser, or serve the folder:
+The front end is plain HTML/CSS/JS with no build step, so you can just open `index.html`.
+To run it with the API:
 
 ```bash
-# any static file server works, e.g.
-npx serve .
-# or
-python -m http.server 8000
+npm install -g @azure/static-web-apps-cli
+cd api && npm install && cd ..
+swa start . --api-location api
 ```
 
-## Tech
+Set `STORAGE_CONNECTION_STRING` in `api/local.settings.json` to a real storage account, or leave it
+unset to use the Azurite emulator (`UseDevelopmentStorage=true`).
 
-Plain HTML/CSS/JavaScript. No frameworks, no bundler, no npm install required — this is
-intentional so it can be hosted for free on GitHub Pages with zero CI/build configuration.
+## Deploying
+
+Pushes to `main` deploy automatically to Azure Static Web Apps via
+[the workflow](.github/workflows/azure-static-web-apps.yml). It needs one repository secret,
+`AZURE_STATIC_WEB_APPS_API_TOKEN`, and one app setting on the Static Web App,
+`STORAGE_CONNECTION_STRING`. No secrets live in this repo.
 
 ## Credit
 
-Framework and stories adapted from Annie Duke's book *Thinking in Bets: Making Smarter Decisions
-When You Don't Have All the Facts*, via the YouTube video
+Framework adapted from Annie Duke's *Thinking in Bets*, via
 ["If You Only Read One Book This Year, Make It This"](https://www.youtube.com/watch?v=nc4u9oxb0nA)
-by Sandeep Swadia.
+by Sandeep Swadia. This is a thinking aid, not advice.
 
 ## License
 

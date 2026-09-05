@@ -1,245 +1,294 @@
-// Decision Bets — vanilla JS, no dependencies, no build step.
-// Everything persists to localStorage so it works as a static GitHub Pages site.
+// Decision Bets — plain JS, no build step.
+// Decisions are stored in Azure (via /api/decisions) when the API is reachable,
+// and fall back to this browser's localStorage otherwise.
 
-(() => {
-  const STORAGE_KEY = "decision-bets-journal-v1";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 
-  /* ---------------------------- Tabs ---------------------------- */
-  const tabButtons = document.querySelectorAll(".tab-btn");
-  const panels = document.querySelectorAll(".panel");
-  tabButtons.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      tabButtons.forEach((b) => b.classList.remove("active"));
-      panels.forEach((p) => p.classList.remove("active"));
-      btn.classList.add("active");
-      document.getElementById(btn.dataset.tab).classList.add("active");
-    });
-  });
+/* ------------------------------ storage ------------------------------ */
 
-  /* ---------------------------- Journal storage ---------------------------- */
-  function loadJournal() {
+const LOCAL_KEY = "decision-bets-v2";
+const LOCAL_USER_KEY = "decision-bets-user";
+
+// A stable per-person id so decisions follow you across sessions on this browser.
+function userId() {
+  let id = localStorage.getItem(LOCAL_USER_KEY);
+  if (!id) {
+    id = (crypto.randomUUID?.() || String(Date.now() + Math.random())).replace(/-/g, "").slice(0, 24);
+    localStorage.setItem(LOCAL_USER_KEY, id);
+  }
+  return id;
+}
+
+const local = {
+  read: () => {
     try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+      return JSON.parse(localStorage.getItem(LOCAL_KEY)) || [];
     } catch {
       return [];
     }
-  }
-  function saveJournal(entries) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
-  }
-  function addJournalEntry(entry) {
-    const entries = loadJournal();
-    entries.unshift({ ...entry, id: Date.now(), savedAt: new Date().toISOString() });
-    saveJournal(entries);
-    renderJournal();
-  }
+  },
+  write: (items) => localStorage.setItem(LOCAL_KEY, JSON.stringify(items)),
+};
 
-  function renderJournal() {
-    const entries = loadJournal();
-    const list = document.getElementById("journal-list");
-    const empty = document.getElementById("journal-empty");
-    list.innerHTML = "";
-    empty.hidden = entries.length !== 0;
+const store = {
+  cloud: false,
 
-    entries.forEach((entry) => {
-      const el = document.createElement("div");
-      el.className = "journal-entry";
-      const date = new Date(entry.savedAt).toLocaleString();
-      let body = "";
-
-      if (entry.type === "eva") {
-        const rowsText = entry.rows
-          .map((r) => `• ${r.name || "(unnamed)"} — payoff ${r.payoff}, prob ${r.prob}%, EV ${r.ev.toFixed(2)}`)
-          .join("\n");
-        body = `<pre>${escapeHtml(rowsText)}\n\nTotal EV: ${entry.totalEv.toFixed(2)} (total probability ${entry.totalProb}%)${
-          entry.premortem ? `\n\nPre-mortem:\n${escapeHtml(entry.premortem)}` : ""
-        }</pre>`;
-      } else if (entry.type === "skillluck") {
-        body = `<pre>Skill/Luck dial: ${entry.value}/100 (skill)\n\nSkill notes:\n${escapeHtml(entry.skillNotes || "-")}\n\nLuck notes:\n${escapeHtml(
-          entry.luckNotes || "-"
-        )}\n\nHonest mistake:\n${escapeHtml(entry.mistakeNotes || "-")}</pre>`;
+  async init() {
+    try {
+      const res = await fetch(`/api/decisions?user=${userId()}`, { signal: AbortSignal.timeout(6000) });
+      if (res.ok) {
+        this.cloud = true;
+        return await res.json();
       }
-
-      el.innerHTML = `
-        <span class="badge">${entry.type === "eva" ? "EVA Framework" : "Skill vs Luck Audit"}</span>
-        <h4>${escapeHtml(entry.title || "(untitled)")}</h4>
-        <div class="meta">Saved ${date}</div>
-        ${body}
-        <div class="entry-actions">
-          <button class="btn danger delete-entry" data-id="${entry.id}">Delete</button>
-        </div>
-      `;
-      list.appendChild(el);
-    });
-
-    list.querySelectorAll(".delete-entry").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const id = Number(btn.dataset.id);
-        saveJournal(loadJournal().filter((e) => e.id !== id));
-        renderJournal();
-      });
-    });
-  }
-
-  function escapeHtml(str) {
-    return String(str)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
-  }
-
-  document.getElementById("journal-clear").addEventListener("click", () => {
-    if (confirm("Clear all saved journal entries? This cannot be undone.")) {
-      saveJournal([]);
-      renderJournal();
+    } catch {
+      /* offline or no API — fall through to local */
     }
-  });
+    return local.read();
+  },
 
-  /* ---------------------------- 1. EVA Framework ---------------------------- */
-  const evaRows = document.getElementById("eva-rows");
-  const evaTotalProb = document.getElementById("eva-total-prob");
-  const evaTotalEv = document.getElementById("eva-total-ev");
-  const evaProbWarning = document.getElementById("eva-prob-warning");
+  async list() {
+    if (!this.cloud) return local.read();
+    const res = await fetch(`/api/decisions?user=${userId()}`);
+    if (!res.ok) throw new Error("Could not load decisions");
+    return res.json();
+  },
 
-  function makeEvaRow(name = "", payoff = "", prob = "") {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td><input type="text" class="eva-name" placeholder="e.g. Great success" value="${escapeHtml(name)}" /></td>
-      <td><input type="number" class="eva-payoff" placeholder="e.g. 50000 or -20000" value="${escapeHtml(payoff)}" /></td>
-      <td><input type="number" class="eva-prob" min="0" max="100" placeholder="e.g. 30" value="${escapeHtml(prob)}" /></td>
-      <td class="ev-cell eva-ev">0</td>
-      <td><button class="icon-btn remove-row" title="Remove scenario">✕</button></td>
-    `;
-    evaRows.appendChild(tr);
-    tr.querySelectorAll("input").forEach((inp) => inp.addEventListener("input", recalcEva));
-    tr.querySelector(".remove-row").addEventListener("click", () => {
-      tr.remove();
-      recalcEva();
+  async save(decision) {
+    if (!this.cloud) {
+      const items = local.read();
+      items.unshift(decision);
+      local.write(items);
+      return decision;
+    }
+    const res = await fetch(`/api/decisions?user=${userId()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(decision),
     });
-  }
+    if (!res.ok) throw new Error("Could not save decision");
+    return res.json();
+  },
 
-  function recalcEva() {
-    let totalProb = 0;
-    let totalEv = 0;
-    evaRows.querySelectorAll("tr").forEach((tr) => {
-      const payoff = parseFloat(tr.querySelector(".eva-payoff").value) || 0;
-      const prob = parseFloat(tr.querySelector(".eva-prob").value) || 0;
-      const ev = payoff * (prob / 100);
-      tr.querySelector(".eva-ev").textContent = ev.toFixed(2);
-      totalProb += prob;
-      totalEv += ev;
-    });
-    evaTotalProb.textContent = `${totalProb}%`;
-    evaTotalEv.textContent = totalEv.toFixed(2);
-    evaProbWarning.hidden = evaRows.querySelectorAll("tr").length === 0 || Math.abs(totalProb - 100) < 0.01;
-  }
-
-  document.getElementById("eva-add-row").addEventListener("click", () => makeEvaRow());
-
-  document.getElementById("eva-save").addEventListener("click", () => {
-    const title = document.getElementById("eva-title").value.trim();
-    const rows = [...evaRows.querySelectorAll("tr")].map((tr) => ({
-      name: tr.querySelector(".eva-name").value.trim(),
-      payoff: parseFloat(tr.querySelector(".eva-payoff").value) || 0,
-      prob: parseFloat(tr.querySelector(".eva-prob").value) || 0,
-      ev: parseFloat(tr.querySelector(".eva-ev").textContent) || 0,
-    }));
-    if (!title || rows.length === 0) {
-      alert("Add a decision title and at least one scenario before saving.");
+  async update(id, patch) {
+    if (!this.cloud) {
+      const items = local.read().map((d) => (d.id === id ? { ...d, ...patch } : d));
+      local.write(items);
       return;
     }
-    addJournalEntry({
-      type: "eva",
-      title,
-      rows,
-      totalProb: parseFloat(evaTotalProb.textContent) || 0,
-      totalEv: parseFloat(evaTotalEv.textContent) || 0,
-      premortem: document.getElementById("eva-premortem").value.trim(),
+    const res = await fetch(`/api/decisions/${id}?user=${userId()}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
     });
-    alert("Saved to your Decision Journal.");
-  });
+    if (!res.ok) throw new Error("Could not update decision");
+  },
 
-  // Seed with two starter rows so the table isn't empty on first load.
-  makeEvaRow("Great success", "", "");
-  makeEvaRow("Catastrophic failure", "", "");
-  recalcEva();
-
-  /* ---------------------------- 2. Known / Unknown ---------------------------- */
-  function makeListAdder(inputId, buttonId, listId) {
-    const input = document.getElementById(inputId);
-    const button = document.getElementById(buttonId);
-    const list = document.getElementById(listId);
-
-    function addItem() {
-      const value = input.value.trim();
-      if (!value) return;
-      const li = document.createElement("li");
-      li.innerHTML = `<span></span><button class="icon-btn remove-item" title="Remove">✕</button>`;
-      li.querySelector("span").textContent = value;
-      li.querySelector(".remove-item").addEventListener("click", () => li.remove());
-      list.appendChild(li);
-      input.value = "";
-      input.focus();
-    }
-
-    button.addEventListener("click", addItem);
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") addItem();
-    });
-  }
-  makeListAdder("known-input", "known-add", "known-list");
-  makeListAdder("unknown-input", "unknown-add", "unknown-list");
-
-  /* ---------------------------- 3. Belief Calibration ---------------------------- */
-  const beliefRows = document.getElementById("belief-rows");
-
-  document.getElementById("belief-add").addEventListener("click", () => {
-    const beliefInput = document.getElementById("belief-input");
-    const confInput = document.getElementById("belief-confidence");
-    const belief = beliefInput.value.trim();
-    const confidence = Math.max(0, Math.min(100, parseFloat(confInput.value) || 0));
-    if (!belief) return;
-
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${escapeHtml(belief)}</td>
-      <td>${confidence}%</td>
-      <td><input type="text" placeholder="yes / no / how much" class="belief-bet" /></td>
-      <td><input type="text" placeholder="What evidence backs this?" class="belief-evidence" /></td>
-      <td><button class="icon-btn remove-row" title="Remove">✕</button></td>
-    `;
-    tr.querySelector(".remove-row").addEventListener("click", () => tr.remove());
-    beliefRows.appendChild(tr);
-    beliefInput.value = "";
-    confInput.value = 70;
-    beliefInput.focus();
-  });
-
-  /* ---------------------------- 4. Skill vs Luck Audit ---------------------------- */
-  const slSlider = document.getElementById("sl-slider");
-  const slReadout = document.getElementById("sl-readout");
-  slSlider.addEventListener("input", () => {
-    const skill = Number(slSlider.value);
-    slReadout.textContent = `${100 - skill} luck / ${skill} skill`;
-  });
-
-  document.getElementById("sl-save").addEventListener("click", () => {
-    const title = document.getElementById("sl-title").value.trim();
-    if (!title) {
-      alert("Describe the decision you're auditing before saving.");
+  async remove(id) {
+    if (!this.cloud) {
+      local.write(local.read().filter((d) => d.id !== id));
       return;
     }
-    addJournalEntry({
-      type: "skillluck",
-      title,
-      value: Number(slSlider.value),
-      skillNotes: document.getElementById("sl-skill-notes").value.trim(),
-      luckNotes: document.getElementById("sl-luck-notes").value.trim(),
-      mistakeNotes: document.getElementById("sl-mistake-notes").value.trim(),
-    });
-    alert("Saved to your Decision Journal.");
-  });
+    const res = await fetch(`/api/decisions/${id}?user=${userId()}`, { method: "DELETE" });
+    if (!res.ok) throw new Error("Could not delete decision");
+  },
+};
 
-  /* ---------------------------- init ---------------------------- */
-  renderJournal();
+/* ------------------------------ the bet form ------------------------------ */
+
+const rows = $("rows");
+
+function addRow(name = "", worth = "", odds = "") {
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td><input type="text" class="c-name" placeholder="Best case" value="${esc(name)}" /></td>
+    <td><input type="number" class="c-worth" placeholder="50000" value="${esc(worth)}" /></td>
+    <td><input type="number" class="c-odds" min="0" max="100" placeholder="30" value="${esc(odds)}" /></td>
+    <td class="ev">0</td>
+    <td><button class="x" title="Remove">&times;</button></td>`;
+  rows.appendChild(tr);
+  tr.querySelectorAll("input").forEach((i) => i.addEventListener("input", recalc));
+  tr.querySelector(".x").addEventListener("click", () => {
+    tr.remove();
+    recalc();
+  });
+}
+
+function recalc() {
+  let odds = 0;
+  let ev = 0;
+  [...rows.rows].forEach((tr) => {
+    const w = parseFloat(tr.querySelector(".c-worth").value) || 0;
+    const o = parseFloat(tr.querySelector(".c-odds").value) || 0;
+    const cell = w * (o / 100);
+    tr.querySelector(".ev").textContent = round(cell);
+    odds += o;
+    ev += cell;
+  });
+  $("total-odds").textContent = `${round(odds)}%`;
+  $("total-ev").textContent = round(ev);
+  $("odds-warn").hidden = rows.rows.length === 0 || Math.abs(odds - 100) < 0.01;
+  return { odds, ev };
+}
+
+// Trims trailing zeros so the readout stays compact.
+const round = (n) => (Math.round(n * 100) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+$("add-row").addEventListener("click", () => addRow());
+
+$("save").addEventListener("click", async () => {
+  const title = $("title").value.trim();
+  const outcomes = [...rows.rows]
+    .map((tr) => ({
+      name: tr.querySelector(".c-name").value.trim(),
+      worth: parseFloat(tr.querySelector(".c-worth").value) || 0,
+      odds: parseFloat(tr.querySelector(".c-odds").value) || 0,
+    }))
+    .filter((o) => o.name || o.worth || o.odds);
+
+  if (!title) return alert("Give the decision a title first.");
+  if (!outcomes.length) return alert("Add at least one possible outcome.");
+
+  const { odds, ev } = recalc();
+  const btn = $("save");
+  btn.disabled = true;
+  btn.textContent = "Saving…";
+  try {
+    await store.save({
+      id: crypto.randomUUID?.() || String(Date.now()),
+      title,
+      outcomes,
+      totalOdds: odds,
+      ev,
+      premortem: $("premortem").value.trim(),
+      createdAt: new Date().toISOString(),
+    });
+    resetForm();
+    await render();
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Save decision";
+  }
+});
+
+function resetForm() {
+  $("title").value = "";
+  $("premortem").value = "";
+  rows.innerHTML = "";
+  seedRows();
+  recalc();
+}
+
+function seedRows() {
+  addRow("Best case");
+  addRow("Base case");
+  addRow("Worst case");
+}
+
+/* ------------------------------ decision list ------------------------------ */
+
+async function render() {
+  let items = [];
+  try {
+    items = await store.list();
+  } catch (err) {
+    $("empty").textContent = err.message;
+    $("empty").hidden = false;
+    return;
+  }
+
+  items.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  const list = $("list");
+  list.innerHTML = "";
+  $("empty").hidden = items.length > 0;
+
+  for (const d of items) {
+    const el = document.createElement("div");
+    el.className = "item";
+    const lines = (d.outcomes || [])
+      .map((o) => `${o.name || "—"}: ${round(o.worth)} at ${o.odds}%`)
+      .join("\n");
+
+    el.innerHTML = `
+      <h3>${esc(d.title)}</h3>
+      <div class="meta">EV ${round(d.ev || 0)} · ${new Date(d.createdAt).toLocaleDateString()}</div>
+      <div class="body">${esc(lines)}${d.premortem ? `\n\nPre-mortem: ${esc(d.premortem)}` : ""}</div>
+      ${
+        d.review
+          ? `<div class="verdict">
+               <strong>${d.review.dial}% skill / ${100 - d.review.dial}% luck</strong>
+               ${d.review.outcome ? `<br>${esc(d.review.outcome)}` : ""}
+               ${d.review.lesson ? `<br><em>Next time: ${esc(d.review.lesson)}</em>` : ""}
+             </div>`
+          : ""
+      }
+      <div class="actions">
+        <button class="link js-review">${d.review ? "Edit review" : "Record outcome"}</button>
+        <button class="link js-del">Delete</button>
+      </div>`;
+
+    el.querySelector(".js-review").addEventListener("click", () => openReview(d));
+    el.querySelector(".js-del").addEventListener("click", async () => {
+      if (!confirm(`Delete "${d.title}"?`)) return;
+      await store.remove(d.id);
+      await render();
+    });
+    list.appendChild(el);
+  }
+}
+
+/* ------------------------------ outcome review ------------------------------ */
+
+const dlg = $("review");
+let reviewing = null;
+
+function openReview(d) {
+  reviewing = d;
+  $("review-title").textContent = d.title;
+  $("outcome").value = d.review?.outcome || "";
+  $("lesson").value = d.review?.lesson || "";
+  $("dial").value = d.review?.dial ?? 50;
+  updateDial();
+  dlg.showModal();
+}
+
+function updateDial() {
+  const skill = Number($("dial").value);
+  $("dial-read").textContent = `${100 - skill} / ${skill}`;
+}
+$("dial").addEventListener("input", updateDial);
+
+$("review-cancel").addEventListener("click", () => dlg.close());
+
+$("review-save").addEventListener("click", async () => {
+  const patch = {
+    review: {
+      outcome: $("outcome").value.trim(),
+      lesson: $("lesson").value.trim(),
+      dial: Number($("dial").value),
+      reviewedAt: new Date().toISOString(),
+    },
+  };
+  try {
+    await store.update(reviewing.id, patch);
+    dlg.close();
+    await render();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+/* ------------------------------ boot ------------------------------ */
+
+(async function boot() {
+  seedRows();
+  recalc();
+  await store.init();
+  const badge = $("storage-badge");
+  badge.textContent = store.cloud ? "☁ saved to Azure" : "saved on this device";
+  badge.classList.toggle("cloud", store.cloud);
+  await render();
 })();
