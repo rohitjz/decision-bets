@@ -131,8 +131,8 @@ function recalc() {
   return { odds, ev };
 }
 
-// Trims trailing zeros so the readout stays compact.
-const round = (n) => (Math.round(n * 100) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 });
+// Trims trailing zeros so the readout stays compact. The `|| 0` collapses -0 to 0.
+const round = (n) => ((Math.round(n * 100) / 100) || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
 
 $("add-row").addEventListener("click", () => addRow());
 
